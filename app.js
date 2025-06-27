@@ -107,21 +107,26 @@ class App {
         });
     }
 
-    setEnvironment() {
-        const loader = new RGBELoader().setDataType(THREE.UnsignedByteType);
-        const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
-        pmremGenerator.compileEquirectangularShader();
+    setEnvironment(){
+    const loader = new RGBELoader().setDataType(THREE.UnsignedByteType);
+    const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+    pmremGenerator.compileEquirectangularShader();
 
-        const self = this;
+    const self = this;
 
-        loader.load('./assets/hdr/venice_sunset_1k.hdr', (texture) => {
-            const envMap = pmremGenerator.fromEquirectangular(texture).texture;
-            pmremGenerator.dispose();
-            self.scene.environment = envMap;
-        }, undefined, (err) => {
-            console.error('An error occurred setting the environment');
-        });
-    }
+    loader.load('./assets/hdr/venice_sunset_1k.hdr', (texture) => {
+        texture.encoding = THREE.RGBEEncoding;
+        texture.flipY = false; // ✅ fix WebGL warning
+
+        const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+        pmremGenerator.dispose();
+
+        self.scene.environment = envMap;
+    }, undefined, (err) => {
+        console.error('An error occurred setting the environment');
+    });
+}
+
 
     resize() {
         this.camera.aspect = window.innerWidth / window.innerHeight;

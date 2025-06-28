@@ -261,7 +261,10 @@ class App {
         this.ui.updateElement('name', info.name);
         this.ui.updateElement('info', info.info);
         this.ui.update();
-        this.ui.lookAt(camPos);
+let lookAtMatrix = new THREE.Matrix4();
+lookAtMatrix.lookAt(this.ui.position, camPos, this.up);
+this.ui.quaternion.slerp(lookAtMatrix.makeRotationFromMatrix(lookAtMatrix).decompose()[1], 0.1);
+
         this.ui.visible = true;
         this.boardShown = name;
     }

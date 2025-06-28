@@ -1,4 +1,3 @@
-
 import * as THREE from './libs/three/three.module.js';
 import { GLTFLoader } from './libs/three/jsm/GLTFLoader.js';
 import { DRACOLoader } from './libs/three/jsm/DRACOLoader.js';
@@ -100,11 +99,8 @@ class App{
         
         const self = this;
 		
-		// Load a glTF resource
 		loader.load(
-			// resource URL
 			'college.glb',
-			// called when the resource is loaded
 			function ( gltf ) {
 
                 const college = gltf.scene.children[0];
@@ -136,43 +132,31 @@ class App{
                 college.add( obj );
                 
                 self.loadingBar.visible = false;
-			
+				
                 self.setupXR();
 			},
-			// called while loading is progressing
 			function ( xhr ) {
-
 				self.loadingBar.progress = (xhr.loaded / xhr.total);
-				
 			},
-			// called when loading has errors
 			function ( error ) {
-
 				console.log( 'An error happened' );
-
 			}
 		);
 	}
     
     setupXR(){
         this.renderer.xr.enabled = true;
-
         const btn = new VRButton( this.renderer );
         
         const self = this;
-        
         const timeoutId = setTimeout( connectionTimeout, 2000 );
         
         function onSelectStart( event ) {
-        
             this.userData.selectPressed = true;
-        
         }
 
         function onSelectEnd( event ) {
-        
             this.userData.selectPressed = false;
-        
         }
         
         function onConnected( event ){
@@ -185,7 +169,6 @@ class App{
         }
         
         this.controllers = this.buildControllers( this.dolly );
-        
         this.controllers.forEach( ( controller ) =>{
             controller.addEventListener( 'selectstart', onSelectStart );
             controller.addEventListener( 'selectend', onSelectEnd );
@@ -193,116 +176,93 @@ class App{
         });
         
         const config = {
-            panelSize: { height: 0.5 },
+            panelSize: { height: 0.5, width: 1 },
             height: 256,
-            name: { fontSize: 50, height: 70 },
-            info: { position:{ top: 70, backgroundColor: "#ccc", fontColor:"#000" } }
+            borderRadius: 20,
+            backgroundColor: "#222222dd",
+            bodyFont: "sans-serif",
+            name: { fontSize: 60, height: 80, fontColor: "#00ffff" },
+            info: { position:{ top: 80, backgroundColor: "#ffffffcc", fontColor:"#000000", padding: 10, borderRadius: 10 } }
         }
         const content = {
             name: "name",
             info: "info"
         }
-        
         this.ui = new CanvasUI( content, config );
         this.scene.add( this.ui.mesh );
-        
         this.renderer.setAnimationLoop( this.render.bind(this) );
     }
-    
+
     buildControllers( parent = this.scene ){
         const controllerModelFactory = new XRControllerModelFactory();
-
         const geometry = new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, -1 ) ] );
-
         const line = new THREE.Line( geometry );
         line.scale.z = 0;
-        
         const controllers = [];
-        
         for(let i=0; i<=1; i++){
             const controller = this.renderer.xr.getController( i );
             controller.add( line.clone() );
             controller.userData.selectPressed = false;
             parent.add( controller );
             controllers.push( controller );
-            
             const grip = this.renderer.xr.getControllerGrip( i );
             grip.add( controllerModelFactory.createControllerModel( grip ) );
             parent.add( grip );
         }
-        
         return controllers;
     }
-    
+
     moveDolly(dt){
         if (this.proxy === undefined) return;
-        
         const wallLimit = 1.3;
-        const speed = 2;
+        const speed = 1.0;
 		let pos = this.dolly.position.clone();
         pos.y += 1;
-        
 		let dir = new THREE.Vector3();
-        //Store original dolly rotation
         const quaternion = this.dolly.quaternion.clone();
-        //Get rotation for movement from the headset pose
         this.dolly.quaternion.copy( this.dummyCam.getWorldQuaternion(this.workingQuaternion) );
 		this.dolly.getWorldDirection(dir);
         dir.negate();
 		this.raycaster.set(pos, dir);
-		
         let blocked = false;
-		
 		let intersect = this.raycaster.intersectObject(this.proxy);
         if (intersect.length>0){
             if (intersect[0].distance < wallLimit) blocked = true;
         }
-		
 		if (!blocked){
             this.dolly.translateZ(-dt*speed);
             pos = this.dolly.getWorldPosition( this.origin );
 		}
-		
-        //cast left
         dir.set(-1,0,0);
         dir.applyMatrix4(this.dolly.matrix);
         dir.normalize();
         this.raycaster.set(pos, dir);
-
         intersect = this.raycaster.intersectObject(this.proxy);
         if (intersect.length>0){
             if (intersect[0].distance<wallLimit) this.dolly.translateX(wallLimit-intersect[0].distance);
         }
-
-        //cast right
         dir.set(1,0,0);
         dir.applyMatrix4(this.dolly.matrix);
         dir.normalize();
         this.raycaster.set(pos, dir);
-
         intersect = this.raycaster.intersectObject(this.proxy);
         if (intersect.length>0){
             if (intersect[0].distance<wallLimit) this.dolly.translateX(intersect[0].distance-wallLimit);
         }
-
-        //cast down
         dir.set(0,-1,0);
         pos.y += 1.5;
         this.raycaster.set(pos, dir);
-        
         intersect = this.raycaster.intersectObject(this.proxy);
         if (intersect.length>0){
             this.dolly.position.copy( intersect[0].point );
         }
-
-        //Restore the original rotation
         this.dolly.quaternion.copy( quaternion );
 	}
-		
+
     get selectPressed(){
         return ( this.controllers !== undefined && (this.controllers[0].userData.selectPressed || this.controllers[1].userData.selectPressed) );    
     }
-    
+
     showInfoboard( name, info, pos ){
         if (this.ui === undefined ) return;
         this.ui.position.copy(pos).add( this.workingVec3.set( 0, 1.3, 0 ) );
@@ -317,7 +277,6 @@ class App{
 
 	render( timestamp, frame ){
         const dt = this.clock.getDelta();
-        
         if (this.renderer.xr.isPresenting){
             let moveGaze = false;
         
@@ -349,12 +308,10 @@ class App{
                 }
             }
         }
-        
         if ( this.immersive != this.renderer.xr.isPresenting){
             this.resize();
             this.immersive = this.renderer.xr.isPresenting;
         }
-        
         this.stats.update();
 		this.renderer.render(this.scene, this.camera);
 	}

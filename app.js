@@ -28,8 +28,13 @@ class App {
         this.scene = new THREE.Scene();
         this.scene.add(this.dolly);
 
-        const ambient = new THREE.HemisphereLight(0xFFFFFF, 0xAAAAAA, 0.8);
-        this.scene.add(ambient);
+        this.ambientLight = new THREE.HemisphereLight(0xfff1cc, 0x444444, 1.0);
+        this.scene.add(this.ambientLight);
+
+        this.directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        this.directionalLight.position.set(10, 10, 5);
+        this.directionalLight.castShadow = true;
+        this.scene.add(this.directionalLight);
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -80,7 +85,12 @@ class App {
             console.error('An error occurred setting the environment');
         });
     }
-
+    toggleDayNight(isDay){
+        this.scene.background = new THREE.Color(isDay ? 0x87CEEB : 0x0D1B2A);
+        this.scene.fog = new THREE.Fog(this.scene.background, 5, 20);
+        this.ambientLight.intensity = isDay ? 1.0 : 0.2;
+        this.directionalLight.intensity = isDay ? 1.0 : 0.1;
+    }
     resize() {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();

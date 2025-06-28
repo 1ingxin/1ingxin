@@ -60,7 +60,7 @@ class App {
         this.loadCollege();
 
         this.immersive = false;
-        this.walkingSpeed = 2; // Custom walking speed
+        this.walkingSpeed = 3; // Custom walking speed
 
         const self = this;
 

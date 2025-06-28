@@ -55,10 +55,11 @@ class App {
         container.appendChild(this.stats.dom);
         this.loadingBar = new LoadingBar();
 
-        this.moveSpeed = 2;
+        this.moveSpeed = 1.5;
         this.loadCollege();
 
         this.immersive = false;
+           const self = this;
         fetch('./college.json')
             .then(response => response.json())
             .then(obj => {
@@ -257,4 +258,3 @@ class App {
 }
 
 export { App };
-

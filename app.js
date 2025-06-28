@@ -362,4 +362,3 @@ class App{
 export { App };
 
 
-my app.js script

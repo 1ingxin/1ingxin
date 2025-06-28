@@ -8,6 +8,7 @@ import { VRButton } from './libs/VRButton.js';
 import { CanvasUI } from './libs/CanvasUI.js';
 import { GazeController } from './libs/GazeController.js';
 import { XRControllerModelFactory } from './libs/three/jsm/XRControllerModelFactory.js';
+import { OrbitControls } from './libs/three/jsm/OrbitControls.js';
 
 class App {
     constructor() {
@@ -15,7 +16,6 @@ class App {
         document.body.appendChild(container);
 
         this.assetsPath = './assets/';
-
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 500);
         this.camera.position.set(0, 1.6, 0);
 
@@ -37,8 +37,11 @@ class App {
         this.renderer.outputEncoding = THREE.sRGBEncoding;
         container.appendChild(this.renderer.domElement);
 
-        this.setEnvironment();
+        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        this.controls.target.set(0, 1.6, 0);
+        this.controls.update();
 
+        this.setEnvironment();
         window.addEventListener('resize', this.resize.bind(this));
 
         this.clock = new THREE.Clock();
@@ -50,105 +53,200 @@ class App {
 
         this.stats = new Stats();
         container.appendChild(this.stats.dom);
-
         this.loadingBar = new LoadingBar();
-        this.immersive = false;
-        this.moveSpeed = 2;
 
-        this.loadSavedPosition();
+        this.moveSpeed = 2;
         this.loadCollege();
 
+        this.immersive = false;
         fetch('./college.json')
             .then(response => response.json())
             .then(obj => {
                 this.boardShown = '';
                 this.boardData = obj;
             });
-
-        this.createMiniMap();
     }
 
-    createMiniMap() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 256;
-        canvas.style.position = 'absolute';
-        canvas.style.bottom = '10px';
-        canvas.style.right = '10px';
-        canvas.style.border = '2px solid white';
-        canvas.style.background = 'rgba(0,0,0,0.4)';
-        document.body.appendChild(canvas);
-        this.miniMapCtx = canvas.getContext('2d');
+    setEnvironment() {
+        const loader = new RGBELoader().setDataType(THREE.UnsignedByteType);
+        const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+        pmremGenerator.compileEquirectangularShader();
+
+        loader.load('./assets/hdr/venice_sunset_1k.hdr', (texture) => {
+            const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+            pmremGenerator.dispose();
+            this.scene.environment = envMap;
+        }, undefined, (err) => {
+            console.error('An error occurred setting the environment');
+        });
     }
 
-    updateMiniMap() {
-        const ctx = this.miniMapCtx;
-        if (!ctx || !this.proxy) return;
-        const dollyPos = this.dolly.position;
-        ctx.clearRect(0, 0, 256, 256);
-        ctx.fillStyle = 'white';
-        ctx.beginPath();
-        ctx.arc(dollyPos.x * 5 + 128, 256 - dollyPos.z * 5, 5, 0, Math.PI * 2);
-        ctx.fill();
+    resize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    savePosition() {
-        const pos = this.dolly.position;
-        localStorage.setItem('vr_position', JSON.stringify({ x: pos.x, y: pos.y, z: pos.z }));
-    }
+    loadCollege() {
+        const loader = new GLTFLoader().setPath(this.assetsPath);
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('./libs/three/js/draco/');
+        loader.setDRACOLoader(dracoLoader);
 
-    loadSavedPosition() {
-        const saved = localStorage.getItem('vr_position');
-        if (saved) {
-            try {
-                const pos = JSON.parse(saved);
-                this.dolly.position.set(pos.x, pos.y, pos.z);
-            } catch (e) {
-                console.warn('Failed to parse saved position');
-            }
-        }
-    }
+        loader.load('college.glb', (gltf) => {
+            const college = gltf.scene.children[0];
+            this.scene.add(college);
 
-    // ... (keep all other existing methods unchanged)
-
-    render(timestamp, frame) {
-        const dt = this.clock.getDelta();
-        if (this.renderer.xr.isPresenting) {
-            let moveGaze = false;
-
-            if (this.useGaze && this.gazeController !== undefined) {
-                this.gazeController.update();
-                moveGaze = (this.gazeController.mode == GazeController.Modes.MOVE);
-            }
-
-            if (this.selectPressed || moveGaze) {
-                this.moveDolly(dt);
-                this.savePosition();
-                if (this.boardData) {
-                    const scene = this.scene;
-                    const dollyPos = this.dolly.getWorldPosition(new THREE.Vector3());
-                    let boardFound = false;
-                    Object.entries(this.boardData).forEach(([name, info]) => {
-                        const obj = scene.getObjectByName(name);
-                        if (obj !== undefined) {
-                            const pos = obj.getWorldPosition(new THREE.Vector3());
-                            if (dollyPos.distanceTo(pos) < 3) {
-                                boardFound = true;
-                                if (this.boardShown !== name) this.showInfoboard(name, info, pos);
-                            }
-                        }
-                    });
-                    if (!boardFound) {
-                        this.boardShown = "";
-                        this.ui.visible = false;
+            college.traverse((child) => {
+                if (child.isMesh) {
+                    if (child.name.includes("PROXY")) {
+                        child.material.visible = false;
+                        this.proxy = child;
+                    } else if (child.material.name.includes("Glass")) {
+                        child.material.opacity = 0.1;
+                        child.material.transparent = true;
+                    } else if (child.material.name.includes("SkyBox")) {
+                        const mat1 = child.material;
+                        const mat2 = new THREE.MeshBasicMaterial({ map: mat1.map });
+                        child.material = mat2;
+                        mat1.dispose();
                     }
                 }
+            });
+
+            const door1 = college.getObjectByName("LobbyShop_Door__1_");
+            const door2 = college.getObjectByName("LobbyShop_Door__2_");
+            const pos = door1.position.clone().sub(door2.position).multiplyScalar(0.5).add(door2.position);
+            const obj = new THREE.Object3D();
+            obj.name = "LobbyShop";
+            obj.position.copy(pos);
+            college.add(obj);
+
+            this.loadingBar.visible = false;
+            this.setupXR();
+        },
+        xhr => this.loadingBar.progress = (xhr.loaded / xhr.total),
+        error => console.error('An error happened while loading the model:', error));
+    }
+
+    setupXR() {
+        this.renderer.xr.enabled = true;
+        new VRButton(this.renderer);
+
+        const timeoutId = setTimeout(() => {
+            this.useGaze = true;
+            this.gazeController = new GazeController(this.scene, this.dummyCam);
+        }, 2000);
+
+        this.controllers = this.buildControllers(this.dolly);
+        this.controllers.forEach(controller => {
+            controller.addEventListener('selectstart', function () { this.userData.selectPressed = true });
+            controller.addEventListener('selectend', function () { this.userData.selectPressed = false });
+            controller.addEventListener('connected', () => clearTimeout(timeoutId));
+        });
+
+        const config = {
+            panelSize: { height: 0.5 },
+            height: 256,
+            name: { fontSize: 50, height: 70 },
+            info: { position: { top: 70, backgroundColor: "#ccc", fontColor: "#000" } }
+        };
+
+        this.ui = new CanvasUI({ name: "name", info: "info" }, config);
+        this.scene.add(this.ui.mesh);
+        this.renderer.setAnimationLoop(this.render.bind(this));
+    }
+
+    buildControllers(parent = this.scene) {
+        const factory = new XRControllerModelFactory();
+        const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
+        const line = new THREE.Line(geometry);
+
+        return [0, 1].map(i => {
+            const controller = this.renderer.xr.getController(i);
+            controller.add(line.clone());
+            controller.userData.selectPressed = false;
+            parent.add(controller);
+
+            const grip = this.renderer.xr.getControllerGrip(i);
+            grip.add(factory.createControllerModel(grip));
+            parent.add(grip);
+
+            return controller;
+        });
+    }
+
+    moveDolly(dt) {
+        if (!this.proxy) return;
+
+        const wallLimit = 1.3;
+        const pos = this.dolly.position.clone().add(new THREE.Vector3(0, 1, 0));
+        const dir = this.dolly.getWorldDirection(new THREE.Vector3()).negate();
+        const quaternion = this.dolly.quaternion.clone();
+        this.dolly.quaternion.copy(this.dummyCam.getWorldQuaternion(this.workingQuaternion));
+
+        this.raycaster.set(pos, dir);
+        if (this.raycaster.intersectObject(this.proxy)[0]?.distance < wallLimit) return;
+
+        this.dolly.translateZ(-dt * this.moveSpeed);
+        const newPos = this.dolly.getWorldPosition(this.origin);
+
+        [['x', -1], ['x', 1], ['y', -1.5]].forEach(([axis, val]) => {
+            dir.set(0, 0, 0)[axis] = val;
+            dir.applyMatrix4(this.dolly.matrix).normalize();
+            this.raycaster.set(newPos, dir);
+            const hit = this.raycaster.intersectObject(this.proxy)[0];
+            if (hit && axis === 'x') {
+                this.dolly.translateX(val < 0 ? wallLimit - hit.distance : hit.distance - wallLimit);
+            }
+            if (hit && axis === 'y') {
+                this.dolly.position.copy(hit.point);
+            }
+        });
+
+        this.dolly.quaternion.copy(quaternion);
+    }
+
+    get selectPressed() {
+        return this.controllers?.some(c => c.userData.selectPressed);
+    }
+
+    showInfoboard(name, info, pos) {
+        if (!this.ui) return;
+        this.ui.position.copy(pos).add(this.workingVec3.set(0, 1.3, 0));
+        const camPos = this.dummyCam.getWorldPosition(this.workingVec3);
+        this.ui.updateElement('name', info.name);
+        this.ui.updateElement('info', info.info);
+        this.ui.update();
+        this.ui.lookAt(camPos);
+        this.ui.visible = true;
+        this.boardShown = name;
+    }
+
+    render() {
+        const dt = this.clock.getDelta();
+        if (!this.renderer.xr.isPresenting) this.controls.update();
+
+        if (this.renderer.xr.isPresenting) {
+            let moveGaze = this.useGaze && this.gazeController?.mode === GazeController.Modes.MOVE;
+            if (this.selectPressed || moveGaze) this.moveDolly(dt);
+
+            const dollyPos = this.dolly.getWorldPosition(new THREE.Vector3());
+            let boardFound = false;
+            for (const [name, info] of Object.entries(this.boardData || {})) {
+                const obj = this.scene.getObjectByName(name);
+                if (obj?.getWorldPosition(new THREE.Vector3()).distanceTo(dollyPos) < 3) {
+                    boardFound = true;
+                    if (this.boardShown !== name) this.showInfoboard(name, info, obj.position);
+                }
+            }
+            if (!boardFound) {
+                this.boardShown = "";
+                this.ui.visible = false;
             }
         }
 
-        this.updateMiniMap();
-
-        if (this.immersive != this.renderer.xr.isPresenting) {
+        if (this.immersive !== this.renderer.xr.isPresenting) {
             this.resize();
             this.immersive = this.renderer.xr.isPresenting;
         }
@@ -159,3 +257,4 @@ class App {
 }
 
 export { App };
+
